@@ -4,29 +4,52 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.consumeAllChanges
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.dimensionResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.example.listanimationsincompose.model.ShoesArticle
-import com.example.listanimationsincompose.ui.Particle
 import com.example.listanimationsincompose.ui.ShoesCard
-import com.example.listanimationsincompose.ui.theme.*
+import com.example.listanimationsincompose.ui.theme.Blue
+import com.example.listanimationsincompose.ui.theme.ListAnimationsInComposeTheme
+import com.example.listanimationsincompose.ui.theme.Purple
+import com.example.listanimationsincompose.ui.theme.Red
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     @ExperimentalAnimationApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val a: Job = CoroutineScope(IO).launch {
+
+        }
         setContent {
             ListAnimationsInComposeTheme(true) {
                 Home()
@@ -34,7 +57,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 
 val allShoesArticles = arrayOf(
     ShoesArticle(
@@ -60,40 +82,35 @@ val allShoesArticles = arrayOf(
     )
 )
 
+//val shoesArticles = arrayListOf<ShoesArticle>()
+
 @ExperimentalAnimationApi
 @Composable
 fun Home() {
     val colorsArray = arrayOf(Purple, Blue, Red)
-
-    var isFired by remember { mutableStateOf(false) }
     var particleColor by remember { mutableStateOf(Color.White) }
-
     val shoesArticles = remember { mutableStateListOf<ShoesArticle>() }
-    val isVisibleStates = remember {
-        mutableStateMapOf<ShoesArticle, Boolean>()
-            .apply {
-                shoesArticles.map { shoesArticle ->
-                    shoesArticle to false
-                }.toMap().also {
-                    putAll(it)
-                }
-            }
-    }
     var addedArticle by remember { mutableStateOf(ShoesArticle()) }
     var id by remember { mutableStateOf(0) }
+
+
+
+    LaunchedEffect(true) {
+        while (true) {
+            delay(2000)
+            particleColor = colorsArray.random()
+            addedArticle =
+                allShoesArticles.first { it.color == particleColor }.copy(id = id)
+                    .also {
+                        id++
+                    }
+            shoesArticles.add(addedArticle)
+        }
+    }
+
     Scaffold(
         topBar = {
             Box {
-                Particle(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter),
-                    isFired = isFired,
-                    color = particleColor,
-                    onCompleteAnim = {
-                        isVisibleStates[addedArticle] = true
-                        isFired = false
-                    }
-                )
                 TopAppBar(
                     title = {
                         Text(text = "List Animations In Compose")
@@ -106,8 +123,7 @@ fun Home() {
                                     .also {
                                         id++
                                     }
-                            shoesArticles.add(0, addedArticle)
-                            isFired = true
+                            shoesArticles.add(addedArticle)
                         }) {
                             Icon(Icons.Filled.AddCircle, contentDescription = null)
                         }
@@ -117,11 +133,40 @@ fun Home() {
             }
         }
     ) { innerPadding ->
-        ShoesList(
-            modifier = Modifier.padding(innerPadding),
-            isVisibleStates = isVisibleStates,
-            shoesArticles = shoesArticles
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize(),
+        ) {
+            val offsetX = remember { mutableStateOf(0f) }
+            val offsetY = remember { mutableStateOf(0f) }
+
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                ShoesList(
+                    modifier = Modifier.padding(innerPadding),
+                    shoesArticles = shoesArticles
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(offsetX.value.roundToInt(), offsetY.value.roundToInt()) }
+                    .size(100.dp)
+                    .clip(CircleShape)
+                    .background(Color.Red)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consumeAllChanges()
+                            offsetX.value += dragAmount.x
+                            offsetY.value += dragAmount.y
+                        }
+                    }
+            ) {
+
+            }
+        }
     }
 }
 
@@ -129,41 +174,44 @@ fun Home() {
 @Composable
 fun ShoesList(
     modifier: Modifier,
-    isVisibleStates: Map<ShoesArticle, Boolean>,
     shoesArticles: MutableList<ShoesArticle>
 ) {
     val lazyListState = rememberLazyListState()
 
+    LaunchedEffect(shoesArticles.size) {
+        with(lazyListState) {
+            if (firstVisibleItemIndex + 10 < layoutInfo.totalItemsCount) {
+                animateScrollToItem(layoutInfo.totalItemsCount - 10)
+            }
+            while (!isScrolledToTheEnd()) {
+                animateScrollBy(2000f, tween(2000, easing = LinearEasing))
+            }
+        }
+    }
+
     LazyColumn(
         state = lazyListState,
-        modifier = modifier.padding(top = dimensionResource(id = R.dimen.list_top_padding))
+        modifier = modifier
+            .animateContentSize(animationSpec = tween(500))
+            .padding(top = dimensionResource(id = R.dimen.list_top_padding)),
+        verticalArrangement = Arrangement.Bottom
     ) {
+        lazyListState
+
         items(shoesArticles.size) { index ->
             val shoesArticle = shoesArticles.getOrNull(index)
             if (shoesArticle != null) {
-                key(shoesArticle) {
-                    ShoesCard(shoesArticle = shoesArticle, isVisible = isVisibleStates[shoesArticle] == true)
-                }
+//                key(shoesArticle) {
+                ShoesCard(
+                    shoesArticle = shoesArticle,
+                )
+//                }
             }
         }
     }
 }
 
-@ExperimentalAnimationApi
-@Preview(showBackground = true)
-@Composable
-fun DefaultPreview() {
-    ListAnimationsInComposeTheme(true) {
-        Home()
-    }
-}
-
-@Composable
-fun Main(isDarkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    ListAnimationsInComposeTheme(isDarkTheme) {
-        // A surface container using the 'background' color from the theme
-        Surface(color = MaterialTheme.colors.background) {
-            content()
-        }
-    }
+private fun LazyListState.isScrolledToTheEnd(): Boolean {
+    val lastItem = layoutInfo.visibleItemsInfo.lastOrNull()
+    return lastItem == null || lastItem.size + lastItem.offset <= layoutInfo.viewportEndOffset
 }
